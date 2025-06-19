@@ -1,0 +1,100 @@
+const fs = require('fs');
+const mysql = require('mysql2/promise');
+const { getFilterQuery } = require('./utils/getFilterQuery');
+const { sendEmail } = require('./utils/emailUtils');
+const { logActivity } = require('./utils/logActivity');
+
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const getTimestamp = () => new Date().toISOString();
+
+/**
+ * Send emails based on a filter name
+ * @param {string} filterName
+ * @param {Object} currentUser - { userId, username }
+ * @returns {Object} summary
+ */
+const sendEmails = async (filterName, currentUser) => {
+  const connection = await mysql.createConnection({
+    host: 'localhost',
+    user: 'root',
+    password: 'root',
+    database: 'UnifiedMessaging',
+  });
+
+  try {
+    const filterResult = getFilterQuery(filterName);
+    if (!filterResult) {
+      // Log invalid filter attempt and return error early
+      await logActivity(currentUser, 'ERROR', 'mailMessaging', `Invalid or unsupported filter: "${filterName}"`);
+      return { error: `Invalid or unsupported filter name: "${filterName}"` };
+    }
+
+    const { query } = filterResult;
+
+    await logActivity(currentUser, 'FILTER', 'mailMessaging', `Applied filter: ${filterName}`);
+
+    const [results] = await connection.query(query);
+
+    if (!results.length) {
+      await logActivity(currentUser, 'NO_RESULTS', 'mailMessaging', `No clients found for filter: ${filterName}`);
+      return { message: 'No clients matched the filter.', sent: 0 };
+    }
+
+    const successfulEmails = [];
+    const failedEmails = [];
+
+    let type = 'standard';
+    if (filterName === 'Female Clients for Digital Gold Investment') {
+      type = 'digitalGold';
+    } else if (filterName === 'Clients celebrating their birthday today') {
+      type = 'birthday';
+    }
+
+    for (const client of results) {
+      try {
+        await sendEmail(client.clientEmail, client.clientName, client.clientProducts, type);
+        successfulEmails.push({ name: client.clientName, email: client.clientEmail, type, timestamp: getTimestamp() });
+      } catch (error) {
+        failedEmails.push({ name: client.clientName, email: client.clientEmail, products: client.clientProducts, type });
+      }
+    }
+
+    const retrySuccesses = [];
+
+    for (const client of failedEmails) {
+      let attempts = 0;
+      let sent = false;
+      while (!sent && attempts < 5) {
+        try {
+          await sendEmail(client.email, client.name, client.products, client.type);
+          retrySuccesses.push({ name: client.name, email: client.email, type: client.type, timestamp: getTimestamp() });
+          sent = true;
+        } catch {
+          attempts++;
+          await delay(5000);
+        }
+      }
+    }
+
+    const totalSent = successfulEmails.length + retrySuccesses.length;
+    const allEmails = [...successfulEmails, ...retrySuccesses];
+    fs.writeFileSync('successful-emails.json', JSON.stringify(allEmails, null, 2));
+
+    await logActivity(currentUser, 'SEND', 'mailMessaging', `Sent ${totalSent} emails using filter "${filterName}"`);
+
+    return {
+      message: 'Emails processed.',
+      initialSuccess: successfulEmails.length,
+      retrySuccess: retrySuccesses.length,
+      totalSent,
+    };
+
+  } catch (err) {
+    await logActivity(currentUser, 'ERROR', 'mailMessaging', `Unexpected error: ${err.message}`);
+    return { error: err.message };
+  } finally {
+    await connection.end();
+  }
+};
+
+module.exports = { sendEmails };

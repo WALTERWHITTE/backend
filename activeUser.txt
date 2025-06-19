@@ -1,0 +1,19 @@
+let activeUser = null;
+
+const setActiveUser = (user) => {
+  activeUser = user; // user = { userId, username }
+};
+
+const getActiveUser = () => {
+  return activeUser;
+};
+
+const clearActiveUser = () => {
+  activeUser = null;
+};
+
+module.exports = {
+  setActiveUser,
+  getActiveUser,
+  clearActiveUser,
+};

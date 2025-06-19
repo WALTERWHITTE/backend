@@ -1,0 +1,237 @@
+const http = require('http');
+const url = require('url');
+const jwt = require('jsonwebtoken');
+
+const { logActivity } = require('./utils/logActivity');
+const {
+  createClient, updateClient, deleteClient, viewFilteredClients
+} = require('./operations/clientDetails');
+const {
+  createFamily, updateFamily, deleteFamily, viewFamilies
+} = require('./operations/family');
+const {
+  createClientProduct, updateClientProduct, deleteClientProduct, viewClientProducts
+} = require('./operations/clientProducts');
+const {
+  createProduct, updateProduct, deleteProduct, viewProducts
+} = require('./operations/products');
+
+const JWT_SECRET = 'your_jwt_secret_here';
+const PORT = process.env.PORT || 3000;
+
+// JSON body parser
+function getRequestBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      try {
+        resolve(JSON.parse(body || '{}'));
+      } catch (e) {
+        reject(new Error('Invalid JSON'));
+      }
+    });
+  });
+}
+
+// Authenticate JWT
+function authenticateJWT(req) {
+  const authHeader = req.headers['authorization'];
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    throw new Error('Authorization header missing or malformed');
+  }
+
+  const token = authHeader.split(' ')[1];
+  return jwt.verify(token, JWT_SECRET);
+}
+
+// Helper: send standardized JSON response
+function sendJson(res, status, data) {
+  res.writeHead(status, {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*', // CORS support
+  });
+  res.end(JSON.stringify(data));
+}
+
+// Route handler wrapper
+const handle = (fn) => async (req, res, currentUser, params) => {
+  try {
+    await fn(req, res, currentUser, params);
+  } catch (err) {
+    console.error('Error in handler:', err);
+    await logActivity(currentUser, 'ERROR', 'server', err.message);
+    sendJson(res, 500, { error: 'Internal Server Error', message: err.message });
+  }
+};
+
+// Route Definitions
+const routes = {
+  'GET /clients': handle(async (req, res, user, params) => {
+    const { query } = params;
+    await logActivity(user, 'VIEW', 'clientDetails', `Viewed clients with filter: ${query?.filter || 'none'}`);
+    const data = await viewFilteredClients(user, query?.filter || null);
+    sendJson(res, 200, data);
+  }),
+
+  'POST /clients': handle(async (req, res, user) => {
+    const body = await getRequestBody(req);
+    await logActivity(user, 'CREATE', 'clientDetails', `Created client: ${JSON.stringify(body)}`);
+    const result = await createClient(user, body);
+    sendJson(res, 201, result);
+  }),
+
+  'PUT /clients/:id': handle(async (req, res, user, params) => {
+    const { id } = params;
+    const body = await getRequestBody(req);
+    await logActivity(user, 'UPDATE', 'clientDetails', `Updated client ${id}`);
+    const result = await updateClient(user, id, body);
+    sendJson(res, 200, result);
+  }),
+
+  'DELETE /clients/:id': handle(async (req, res, user, params) => {
+    const { id } = params;
+    await logActivity(user, 'DELETE', 'clientDetails', `Deleted client ${id}`);
+    const result = await deleteClient(user, id);
+    sendJson(res, 200, result);
+  }),
+
+  'GET /families': handle(async (req, res, user) => {
+    await logActivity(user, 'VIEW', 'family', 'Viewed families');
+    const data = await viewFamilies(user);
+    sendJson(res, 200, data);
+  }),
+
+  'POST /families': handle(async (req, res, user) => {
+    const body = await getRequestBody(req);
+    await logActivity(user, 'CREATE', 'family', `Created family: ${JSON.stringify(body)}`);
+    const result = await createFamily(user, body);
+    sendJson(res, 201, result);
+  }),
+
+  'PUT /families/:id': handle(async (req, res, user, params) => {
+    const { id } = params;
+    const body = await getRequestBody(req);
+    await logActivity(user, 'UPDATE', 'family', `Updated family ${id}`);
+    const result = await updateFamily(user, id, body);
+    sendJson(res, 200, result);
+  }),
+
+  'DELETE /families/:id': handle(async (req, res, user, params) => {
+    const { id } = params;
+    await logActivity(user, 'DELETE', 'family', `Deleted family ${id}`);
+    const result = await deleteFamily(user, id);
+    sendJson(res, 200, result);
+  }),
+
+  'GET /client-products': handle(async (req, res, user) => {
+    await logActivity(user, 'VIEW', 'clientProducts', 'Viewed client products');
+    const data = await viewClientProducts(user);
+    sendJson(res, 200, data);
+  }),
+
+  'POST /client-products': handle(async (req, res, user) => {
+    const body = await getRequestBody(req);
+    await logActivity(user, 'CREATE', 'clientProducts', `Created client-product: ${JSON.stringify(body)}`);
+    const result = await createClientProduct(user, body);
+    sendJson(res, 201, result);
+  }),
+
+  'PUT /client-products/:id': handle(async (req, res, user, params) => {
+    const { id } = params;
+    const body = await getRequestBody(req);
+    await logActivity(user, 'UPDATE', 'clientProducts', `Updated client-product ${id}`);
+    const result = await updateClientProduct(user, id, body);
+    sendJson(res, 200, result);
+  }),
+
+  'DELETE /client-products/:id': handle(async (req, res, user, params) => {
+    const { id } = params;
+    await logActivity(user, 'DELETE', 'clientProducts', `Deleted client-product ${id}`);
+    const result = await deleteClientProduct(user, id);
+    sendJson(res, 200, result);
+  }),
+
+  'GET /products': handle(async (req, res, user) => {
+    await logActivity(user, 'VIEW', 'products', 'Viewed products');
+    const data = await viewProducts(user);
+    sendJson(res, 200, data);
+  }),
+
+  'POST /products': handle(async (req, res, user) => {
+    const body = await getRequestBody(req);
+    await logActivity(user, 'CREATE', 'products', `Created product: ${JSON.stringify(body)}`);
+    const result = await createProduct(user, body);
+    sendJson(res, 201, result);
+  }),
+
+  'PUT /products/:id': handle(async (req, res, user, params) => {
+    const { id } = params;
+    const body = await getRequestBody(req);
+    await logActivity(user, 'UPDATE', 'products', `Updated product ${id}`);
+    const result = await updateProduct(user, id, body);
+    sendJson(res, 200, result);
+  }),
+
+  'DELETE /products/:id': handle(async (req, res, user, params) => {
+    const { id } = params;
+    await logActivity(user, 'DELETE', 'products', `Deleted product ${id}`);
+    const result = await deleteProduct(user, id);
+    sendJson(res, 200, result);
+  }),
+
+  'GET /health': async (req, res) => {
+    sendJson(res, 200, { status: 'ok', uptime: process.uptime() });
+  },
+};
+
+function matchRoute(method, path) {
+  for (const key of Object.keys(routes)) {
+    const [routeMethod, routePath] = key.split(' ');
+    if (method !== routeMethod) continue;
+
+    const routeParts = routePath.split('/');
+    const pathParts = path.split('/');
+    if (routeParts.length !== pathParts.length) continue;
+
+    const params = {};
+    const isMatch = routeParts.every((part, i) => {
+      if (part.startsWith(':')) {
+        params[part.slice(1)] = pathParts[i];
+        return true;
+      }
+      return part === pathParts[i];
+    });
+
+    if (isMatch) return { handler: routes[key], params };
+  }
+  return null;
+}
+
+const server = http.createServer(async (req, res) => {
+  const parsedUrl = url.parse(req.url, true);
+  const { pathname, query } = parsedUrl;
+  const method = req.method;
+
+  const match = matchRoute(method, pathname);
+  if (!match) {
+    return sendJson(res, 404, { error: 'Not Found' });
+  }
+
+  const { handler, params } = match;
+
+  let currentUser = null;
+  if (!pathname.startsWith('/health')) {
+    try {
+      currentUser = authenticateJWT(req);
+    } catch (err) {
+      return sendJson(res, 401, { error: 'Unauthorized', message: err.message });
+    }
+  }
+
+  await handler(req, res, currentUser, { ...params, query });
+});
+
+server.listen(PORT, () => {
+  console.log(`✅ Server is running on http://localhost:${PORT}`);
+});

@@ -1,0 +1,11 @@
+function sendJsonResponse(res, data, statusCode = 200) {
+  res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(data));
+}
+
+function sendErrorResponse(res, error, statusCode = 500) {
+  res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ error: error.message || error || 'Internal Server Error' }));
+}
+
+module.exports = { sendJsonResponse, sendErrorResponse };
