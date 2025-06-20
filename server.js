@@ -6,6 +6,8 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { parse } = require('url');
 const mysql = require('mysql2/promise');
+const fs = require('fs');
+const path = require('path');
 
 
 const db = require('./db');
@@ -542,6 +544,7 @@ const mailRoutes = {
         userId: currentUser.userId,
         username: currentUser.username
       });
+  
     } catch (err) {
       sendJson(res, 500, { error: err.message });
     }
@@ -613,6 +616,19 @@ function streamEmailLog(event) {
   }
 }
 
+function serveIndexHtml(res) {
+  const filePath = path.join(__dirname, 'public', 'index.html'); // Adjust path if needed
+  fs.readFile(filePath, (err, data) => {
+    if (err) {
+      res.writeHead(500, { 'Content-Type': 'text/plain' });
+      res.end('Error loading index.html');
+    } else {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(data);
+    }
+  });
+}
+
 const server = http.createServer(async (req, res) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
 
@@ -638,6 +654,20 @@ const server = http.createServer(async (req, res) => {
       }
       return;
     }
+
+    // Handle /login and /register
+if (pathname === '/login' && method === 'POST') {
+  return await allUserActivityRoutes['POST /login'](req, res);
+}
+
+if (pathname === '/register' && method === 'POST') {
+  return await allUserActivityRoutes['POST /register'](req, res);
+}
+
+const publicRouteKey = `${method} ${pathname}`;
+if (allUserActivityRoutes[publicRouteKey]) {
+  return await allUserActivityRoutes[publicRouteKey](req, res);
+}
 
     // API route handling
     if (pathname.startsWith('/api/')) {
@@ -671,8 +701,19 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 404, { error: 'Not Found' });
     }
 
-    // Fallback
-    return sendJson(res, 404, { error: 'Not Found' });
+    // ✅ FALLBACK: Serve React app for all unknown frontend routes
+// ✅ Serve React frontend for all unmatched GET routes
+if (req.method === 'GET' &&
+    !pathname.startsWith('/api/') &&
+    !pathname.startsWith('/register') &&
+    !pathname.startsWith('/login') &&
+    !pathname.startsWith('/static')
+) {
+  return serveIndexHtml(res);
+}
+
+return sendJson(res, 404, { error: 'Not Found' });
+
   } catch (err) {
     console.error('Server error:', err);
     return sendJson(res, 500, { error: 'Internal Server Error', message: err.message });
