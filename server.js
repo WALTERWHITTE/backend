@@ -330,7 +330,7 @@ const dbRoutes = {
   }),
   'POST /products': handle(async (req, res, user) => {
   const body = await parseBody(req);
-  await logActivity(user, 'CREATE', 'products', `User ${user} requested product creation: ${JSON.stringify(body)}`);
+  await logActivity(user, 'CREATE', 'products', `requested product creation: ${JSON.stringify(body)}`);
   const result = await createProduct(user, body);
   sendJson(res, 201, result);
 }),
@@ -343,7 +343,7 @@ const dbRoutes = {
     return sendJson(res, 400, { error: 'productName is required and cannot be empty.' });
   }
 
-  await logActivity(user, 'UPDATE', 'products', `User ${user} requested update for product ID ${id} with new name: ${productName}`);
+  await logActivity(user, 'UPDATE', 'products', `User requested update for product ID ${id} with new name: ${productName}`);
 
   const result = await updateProduct(user, Number(id), productName);
 
@@ -354,7 +354,7 @@ const dbRoutes = {
   'DELETE /products/:id': handle(async (req, res, user, params) => {
   const { id } = params;
   const unlinkBeforeDelete = req.url.includes('unlinkBeforeDelete=true');
-  await logActivity(user, 'DELETE', 'products', `User ${user} requested deletion of product ID ${id}, unlinkBeforeDelete=${unlinkBeforeDelete}`);
+  await logActivity(user, 'DELETE', 'products', `User requested deletion of product ID ${id}, unlinkBeforeDelete=${unlinkBeforeDelete}`);
   const body = { productId: Number(id), unlinkBeforeDelete };
   const result = await deleteProduct(user, body);
   sendJson(res, 200, result);
