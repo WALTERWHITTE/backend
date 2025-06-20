@@ -1,8 +1,12 @@
-/**
- * Universal Filter Query Generator for Email Sending
- */
-const getFilterQuery = ({ filterName, productId, ageComparator, ageValue }) => {
+const getFilterQuery = ({ filterName, productIds = [], ageComparator, ageValue }) => {
   if (!filterName) return null;
+
+  console.log('📦 Received Filter:', { filterName, productIds, ageComparator, ageValue });
+
+  const formatProductList = (ids) =>
+    ids && ids.length > 0 ? `(${ids.map(Number).join(',')})` : null;
+
+  const productList = formatProductList(productIds);
 
   const baseSelect = `
     SELECT 
@@ -12,17 +16,18 @@ const getFilterQuery = ({ filterName, productId, ageComparator, ageValue }) => {
       GROUP_CONCAT(p.productName SEPARATOR ', ') AS clientProducts,
       cd.clientGender,
       cd.clientDob AS clientDOB,
+      cd.clientProfession,
       cd.familyHead
     FROM clientDetails cd
-    LEFT JOIN clientProducts cp ON cd.clientId = cp.clientId
+    LEFT JOIN clientProducts cp ON cd.clientId = cp.clientId ${productList ? `AND cp.productId IN ${productList}` : ''}
     LEFT JOIN products p ON cp.productId = p.productId
   `;
 
   let whereClause = `WHERE cd.clientEmail IS NOT NULL`;
 
+  // Filter conditions
   switch (filterName) {
     case 'All clients':
-      // No extra where
       break;
 
     case 'Family heads':
@@ -38,23 +43,23 @@ const getFilterQuery = ({ filterName, productId, ageComparator, ageValue }) => {
       break;
 
     case 'All clients with product':
-      if (!productId) return null;
-      whereClause += ` AND cp.productId = ${productId}`;
+      if (!productList) return null;
+      whereClause += ` AND cp.productId IS NOT NULL`;
       break;
 
     case 'Family heads with product':
-      if (!productId) return null;
-      whereClause += ` AND cd.familyHead = 1 AND cp.productId = ${productId}`;
+      if (!productList) return null;
+      whereClause += ` AND cd.familyHead = 1 AND cp.productId IS NOT NULL`;
       break;
 
     case 'Male clients with product':
-      if (!productId) return null;
-      whereClause += ` AND cd.clientGender = 'Male' AND cp.productId = ${productId}`;
+      if (!productList) return null;
+      whereClause += ` AND cd.clientGender = 'Male' AND cp.productId IS NOT NULL`;
       break;
 
     case 'Female clients with product':
-      if (!productId) return null;
-      whereClause += ` AND cd.clientGender = 'Female' AND cp.productId = ${productId}`;
+      if (!productList) return null;
+      whereClause += ` AND cd.clientGender = 'Female' AND cp.productId IS NOT NULL`;
       break;
 
     case 'All clients by age':
@@ -87,6 +92,10 @@ const getFilterQuery = ({ filterName, productId, ageComparator, ageValue }) => {
 
   const query = `${baseSelect} ${whereClause} GROUP BY cd.clientId`;
   return { query, filter: filterName };
+
+  console.log('✅ Final Query:', query);
 };
+
+
 
 module.exports = { getFilterQuery };

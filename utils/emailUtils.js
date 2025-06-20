@@ -1,12 +1,7 @@
-const nodemailer = require('nodemailer');
 const connection = require('../db');
+const nodemailer = require('nodemailer');
 
-// Validate env variables
-if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-  throw new Error('EMAIL_USER or EMAIL_PASS environment variable is missing.');
-}
-
-// Create transporter but DO NOT send emails here
+// Transporter config
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
@@ -15,8 +10,8 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// This function only prepares the final mailOptions (subject, content, recipients etc.)
-const prepareEmail = async ({ email, name, products, templateId }) => {
+// ✅ Final: Prepare Email with full placeholder support
+const prepareEmail = async ({ client, templateId }) => {
   const monthYear = new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
 
   const conn = await connection.getConnection();
@@ -32,16 +27,38 @@ const prepareEmail = async ({ email, name, products, templateId }) => {
 
   let { subject, content } = templateRows[0];
 
-  // Replace placeholders
-  subject = subject.replace('${name}', name).replace('${monthYear}', monthYear);
-  content = content
-    .replace('${name}', name)
-    .replace('${monthYear}', monthYear)
-    .replace('${products}', products || '');
+  // Format DOB to "Mon Jun 2 1980"
+  let formattedDob = '';
+  if (client.clientDOB) {
+    const dob = new Date(client.clientDOB);
+    formattedDob = dob.toDateString(); // e.g., "Mon Jun 02 1980"
+  }
+
+  const variables = {
+    ...client,
+    name: client.clientName,
+    email: client.clientEmail,
+    products: client.clientProducts,
+    monthYear,
+    profession: client.clientProfession,
+    gender: client.clientGender,
+    dob: formattedDob,
+    familyhead: client.familyHead === 1 ? 'Yes' : 'No',
+  };
+
+  const replacePlaceholders = (str) =>
+    str.replace(/\$\{(\w+)\}/g, (_, key) =>
+      variables[key] !== undefined && variables[key] !== null
+        ? variables[key]
+        : `[Unknown: ${key}]`
+    );
+
+  subject = replacePlaceholders(subject);
+  content = replacePlaceholders(content);
 
   const mailOptions = {
     from: process.env.EMAIL_USER,
-    to: email,
+    to: client.clientEmail,
     subject,
     html: content,
   };
@@ -49,5 +66,5 @@ const prepareEmail = async ({ email, name, products, templateId }) => {
   return mailOptions;
 };
 
-// Export both transporter and prepareEmail function
-module.exports = { transporter, prepareEmail };
+
+module.exports = { prepareEmail, transporter };

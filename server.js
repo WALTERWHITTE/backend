@@ -104,12 +104,26 @@ const sendEmails = async (
   filterName,
   templateId,
   user,
-  productId,
+  productIds = [],
   ageComparator,
   ageValue,
-  sendEvent // optional real-time logger
+  sendEvent
 ) => {
-  const filterQuery = getFilterQuery({ filterName, productId, ageComparator, ageValue });
+  if (!Array.isArray(productIds)) {
+  console.warn('⚠️ productIds is not an array:', productIds);
+}
+
+  console.log('🛠️ Debug Filter Inputs:', {
+  filterName,
+  productIds,
+  ageComparator,
+  ageValue
+});
+
+  const filterQuery = getFilterQuery({ filterName, productIds, ageComparator, ageValue });
+
+  console.log('🛠️ Generated Query:', filterQuery);
+
 
   if (!filterQuery) {
     return { error: 'Invalid filter or missing parameters.' };
@@ -148,7 +162,7 @@ const sendEmails = async (
 
     while (!sent && attempt < maxRetries) {
       try {
-        const mailOptions = await prepareEmail({ email, name, products, templateId });
+        const mailOptions = await prepareEmail({ client, templateId });
 
         sendEvent?.({ name, email, status: 'sending', attempt: attempt + 1 });
         console.log(`📨 Sending email to ${name} (${email}), attempt ${attempt + 1}`);
@@ -170,7 +184,6 @@ const sendEmails = async (
       } catch (err) {
         attempt++;
 
-        // 🛑 Template doesn't exist
         if (err.message.includes("Template with ID")) {
           const reason = `Template ID ${templateId} does not exist.`;
           failed.push({ email, error: reason });
@@ -178,7 +191,6 @@ const sendEmails = async (
           break;
         }
 
-        // ⏱️ Retry if timeout
         if (err.message.includes("ETIMEDOUT")) {
           console.warn(`⚠️ Timeout for ${email}: attempt ${attempt} of ${maxRetries}`);
           if (attempt >= maxRetries) {
@@ -189,7 +201,6 @@ const sendEmails = async (
           }
           await new Promise(resolve => setTimeout(resolve, retryDelayMs));
         } else {
-          // Other errors: fail if last attempt, else retry
           const reason = err.message;
           if (attempt >= maxRetries) {
             failed.push({ email, error: reason });
@@ -565,7 +576,7 @@ const mailRoutes = {
     if (!user) return sendJson(res, 401, { error: 'Unauthorized' });
 
     const body = await parseBody(req);
-    const { filterName, templateId, productId, ageComparator, ageValue } = body;
+    const { filterName, templateId, productIds, ageComparator, ageValue } = body;
 
     if (!filterName || !templateId) {
       return sendJson(res, 400, { error: 'Missing filterName or templateId' });
@@ -575,7 +586,7 @@ const mailRoutes = {
   filterName,
   templateId,
   user,
-  productId,
+  productIds,
   ageComparator,
   ageValue,
   streamEmailLog,
